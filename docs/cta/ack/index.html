@@ -14,7 +14,7 @@
     /* --- page frame --- */
     .container{max-width:900px;margin:0 auto;padding:16px}
     header.brand{padding:12px 0 0}
-    .brand img{height:32px;width:auto;display:block}
+    .brand img{height:320px;width:auto;display:block;max-width:100%}
 
     /* --- content card --- */
     .stage{display:flex;justify-content:center}
@@ -77,9 +77,7 @@
   <script>
     (function(){
       // ==== CONFIG: replace with your Apps Script doPost URL (production) ====
-      // Example (from your snippet): https://script.google.com/macros/s/AKfycbw9X71BbvC55s2iJhyfGU5PoBtOxC9jvFsdKpd8BvrNghMfw8Yy9X-iSZ1Xcw9oTAPMcA/exec
       var GAS_URL = "https://script.google.com/macros/s/AKfycbw9X71BbvC55s2iJhyfGU5PoBtOxC9jvFsdKpd8BvrNghMfw8Yy9X-iSZ1Xcw9oTAPMcA/exec";
-      // Optional: append ?debug=1 in the URL to test manual continue without auto-submit.
 
       // ==== helpers ====
       function qs(name){
@@ -87,7 +85,6 @@
         return m ? decodeURIComponent(m[1].replace(/\+/g,"%20")) : "";
       }
       function rid(){
-        // yyyymmddhhmmss-rand4 (good enough for tracing)
         var d = new Date();
         function p2(n){return n<10?"0"+n:n}
         var ts = d.getFullYear().toString()+p2(d.getMonth()+1)+p2(d.getDate())+p2(d.getHours())+p2(d.getMinutes())+p2(d.getSeconds());
@@ -98,8 +95,8 @@
       function hide(id){document.getElementById(id).classList.add("hide");}
 
       // ==== main ====
-      var composite = qs("p");        // the {1} from WATI (alert + msisdn composite, unchanged)
-      var debugMode = qs("debug");    // debug=1 to prevent auto-submit
+      var composite = qs("p");
+      var debugMode = qs("debug");
       var form = document.getElementById("handoffForm");
       var btn = document.getElementById("continueBtn");
       var cancel = document.getElementById("cancelBtn");
@@ -113,24 +110,20 @@
         return;
       }
 
-      fieldAlert.value = composite;   // hand the composite through; server splits it
+      fieldAlert.value = composite;
       fieldRid.value = rid();
       form.action = GAS_URL;
 
-      // Manual continue (duplicate-click guard)
       btn.addEventListener("click", function(){
         btn.disabled = true;
         try { form.submit(); } catch(_){}
-        // If blocked, re-enable after 4s so user can retry
         setTimeout(function(){ if (!btn.dataset.sent) btn.disabled = false; }, 4000);
       });
 
       cancel.addEventListener("click", function(){
-        // Close tab if allowed; otherwise no-op
         try { window.close(); } catch(_){}
       });
 
-      // Auto-submit unless debug=1
       if (!debugMode) {
         setTimeout(function(){ try { btn.disabled = true; form.submit(); btn.dataset.sent = "1"; } catch(_){} }, 200);
       }
