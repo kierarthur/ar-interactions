@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Acknowledging… — Arthur Rai Medical Services</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="robots" content="noindex,nofollow">
+  <meta name="referrer" content="no-referrer">
+  <style>
+    :root { color-scheme: light dark; }
+    html,body{height:100%}
+    body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;background:#f7f7fb;margin:0;line-height:1.45}
+
+    /* --- page frame --- */
+    .container{max-width:900px;margin:0 auto;padding:16px}
+    header.brand{padding:12px 0 0}
+    .brand img{height:32px;width:auto;display:block}
+
+    /* --- content card --- */
+    .stage{display:flex;justify-content:center}
+    .card{max-width:720px;width:100%;background:#fff;border-radius:16px;box-shadow:0 4px 16px rgba(0,0,0,.10);padding:22px;margin:12px 8px 24px}
+    h1{margin:0 0 10px;font-size:22px}
+    p{margin:8px 0;color:#444}
+    .muted{color:#666}
+    .note{font-size:12px;margin-top:12px;color:#666}
+
+    .btns{margin-top:16px;display:flex;gap:10px;flex-wrap:wrap}
+    button.btn{appearance:none;border:1px solid #1a73e8;background:#1a73e8;color:#fff;padding:10px 14px;border-radius:10px;font-weight:600}
+    button.btn.secondary{background:#fff;color:#1a73e8}
+    button.btn[disabled]{opacity:0.6;cursor:not-allowed}
+
+    .spinner{display:inline-block;width:18px;height:18px;border-radius:50%;border:3px solid #cfe0ff;border-top-color:#1a73e8;vertical-align:middle;animation:s 0.8s linear infinite;margin-right:8px}
+    @keyframes s{to{transform:rotate(360deg)}}
+    .hide{display:none}
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header class="brand" aria-label="Arthur Rai Medical Services">
+      <a href="https://www.arthur-rai.co.uk/" aria-label="Arthur Rai Medical Services — Home">
+        <img src="/assets/arthurrai.png" alt="Arthur Rai Medical Services">
+      </a>
+    </header>
+  </div>
+
+  <div class="stage">
+    <div class="card" id="panel-ok">
+      <h1><span class="spinner" aria-hidden="true"></span> Preparing your acknowledgement…</h1>
+      <p class="muted">We’re updating our system. If nothing happens, tap <strong>Continue</strong>.</p>
+
+      <div class="btns">
+        <button class="btn" id="continueBtn" type="button">Continue</button>
+        <button class="btn secondary" id="cancelBtn" type="button">Cancel</button>
+      </div>
+
+      <p class="note">Do not share this link. It may expire.</p>
+
+      <noscript>
+        <p><strong>JavaScript is disabled.</strong> Tap <em>Continue</em> to proceed.</p>
+      </noscript>
+
+      <!-- Hidden form to Apps Script (POST) -->
+      <form id="handoffForm" method="POST" action="">
+        <input type="hidden" name="action" value="EMERGENCY_ACK_LINK" />
+        <input type="hidden" name="alert_id" id="fieldAlertId" value="" />
+        <input type="hidden" name="r" id="fieldRid" value="" />
+      </form>
+    </div>
+
+    <div class="card hide" id="panel-error">
+      <h1>We can’t process this link</h1>
+      <p class="muted" id="errText">The link is missing required data.</p>
+      <p class="note">Please return to your WhatsApp message and tap the button again.</p>
+    </div>
+  </div>
+
+  <script>
+    (function(){
+      // ==== CONFIG: replace with your Apps Script doPost URL (production) ====
+      // Example (from your snippet): https://script.google.com/macros/s/AKfycbw9X71BbvC55s2iJhyfGU5PoBtOxC9jvFsdKpd8BvrNghMfw8Yy9X-iSZ1Xcw9oTAPMcA/exec
+      var GAS_URL = "https://script.google.com/macros/s/AKfycbw9X71BbvC55s2iJhyfGU5PoBtOxC9jvFsdKpd8BvrNghMfw8Yy9X-iSZ1Xcw9oTAPMcA/exec";
+      // Optional: append ?debug=1 in the URL to test manual continue without auto-submit.
+
+      // ==== helpers ====
+      function qs(name){
+        var m = new RegExp("[?&]"+name+"=([^&#]*)").exec(window.location.search);
+        return m ? decodeURIComponent(m[1].replace(/\+/g,"%20")) : "";
+      }
+      function rid(){
+        // yyyymmddhhmmss-rand4 (good enough for tracing)
+        var d = new Date();
+        function p2(n){return n<10?"0"+n:n}
+        var ts = d.getFullYear().toString()+p2(d.getMonth()+1)+p2(d.getDate())+p2(d.getHours())+p2(d.getMinutes())+p2(d.getSeconds());
+        var rnd = Math.floor(Math.random()*10000).toString().padStart(4,"0");
+        return ts+"-"+rnd;
+      }
+      function show(id){document.getElementById(id).classList.remove("hide");}
+      function hide(id){document.getElementById(id).classList.add("hide");}
+
+      // ==== main ====
+      var composite = qs("p");        // the {1} from WATI (alert + msisdn composite, unchanged)
+      var debugMode = qs("debug");    // debug=1 to prevent auto-submit
+      var form = document.getElementById("handoffForm");
+      var btn = document.getElementById("continueBtn");
+      var cancel = document.getElementById("cancelBtn");
+      var fieldAlert = document.getElementById("fieldAlertId");
+      var fieldRid = document.getElementById("fieldRid");
+
+      if (!composite) {
+        hide("panel-ok");
+        show("panel-error");
+        document.getElementById("errText").textContent = "Missing parameter. Please tap the WhatsApp button again.";
+        return;
+      }
+
+      fieldAlert.value = composite;   // hand the composite through; server splits it
+      fieldRid.value = rid();
+      form.action = GAS_URL;
+
+      // Manual continue (duplicate-click guard)
+      btn.addEventListener("click", function(){
+        btn.disabled = true;
+        try { form.submit(); } catch(_){}
+        // If blocked, re-enable after 4s so user can retry
+        setTimeout(function(){ if (!btn.dataset.sent) btn.disabled = false; }, 4000);
+      });
+
+      cancel.addEventListener("click", function(){
+        // Close tab if allowed; otherwise no-op
+        try { window.close(); } catch(_){}
+      });
+
+      // Auto-submit unless debug=1
+      if (!debugMode) {
+        setTimeout(function(){ try { btn.disabled = true; form.submit(); btn.dataset.sent = "1"; } catch(_){} }, 200);
+      }
+    })();
+  </script>
+</body>
+</html>
