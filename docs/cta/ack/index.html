@@ -4,34 +4,45 @@
   <meta charset="utf-8" />
   <title>Acknowledging… — Arthur Rai Medical Services</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta name="robots" content="noindex,nofollow">
-  <meta name="referrer" content="no-referrer">
+  <meta name="robots" content="noindex,nofollow" />
+  <meta name="referrer" content="no-referrer" />
   <style>
     :root { color-scheme: light dark; }
-    html,body{height:100%}
+    html, body { height: 100% }
     body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;background:#f7f7fb;margin:0;line-height:1.45}
 
-    /* --- page frame --- */
     .container{max-width:900px;margin:0 auto;padding:16px}
     header.brand{padding:12px 0 0}
     .brand img{height:320px;width:auto;display:block;max-width:100%}
 
-    /* --- content card --- */
     .stage{display:flex;justify-content:center}
-    .card{max-width:720px;width:100%;background:#fff;border-radius:16px;box-shadow:0 4px 16px rgba(0,0,0,.10);padding:22px;margin:12px 8px 24px}
+    .card{max-width:760px;width:100%;background:#fff;border-radius:16px;box-shadow:0 4px 16px rgba(0,0,0,.10);padding:22px;margin:12px 8px 24px}
     h1{margin:0 0 10px;font-size:22px}
+    h2{margin:16px 0 8px;font-size:18px}
     p{margin:8px 0;color:#444}
     .muted{color:#666}
     .note{font-size:12px;margin-top:12px;color:#666}
 
     .btns{margin-top:16px;display:flex;gap:10px;flex-wrap:wrap}
-    button.btn{appearance:none;border:1px solid #1a73e8;background:#1a73e8;color:#fff;padding:10px 14px;border-radius:10px;font-weight:600}
+    button.btn{appearance:none;border:1px solid #1a73e8;background:#1a73e8;color:#fff;padding:10px 14px;border-radius:10px;font-weight:600;cursor:pointer}
     button.btn.secondary{background:#fff;color:#1a73e8}
     button.btn[disabled]{opacity:0.6;cursor:not-allowed}
+    a.btn{display:inline-block;border:1px solid #1a73e8;background:#fff;color:#1a73e8;padding:10px 14px;border-radius:10px;font-weight:600;text-decoration:none}
 
     .spinner{display:inline-block;width:18px;height:18px;border-radius:50%;border:3px solid #cfe0ff;border-top-color:#1a73e8;vertical-align:middle;animation:s 0.8s linear infinite;margin-right:8px}
     @keyframes s{to{transform:rotate(360deg)}}
     .hide{display:none}
+
+    .tablewrap{overflow:auto;margin-top:12px}
+    table{border-collapse:collapse;width:100%;min-width:640px}
+    th,td{border:1px solid #e8e8ef;padding:8px 10px;text-align:left;font-size:13px}
+    th{background:#f2f3f7;color:#333}
+    .ok{color:#137333}
+    .warn{color:#b06000}
+    .err{color:#b00020}
+
+    /* hidden iframe “bridge” */
+    iframe#bridge{position:absolute;left:-9999px;top:-9999px;width:1px;height:1px;border:0}
   </style>
 </head>
 <body>
@@ -44,90 +55,365 @@
   </div>
 
   <div class="stage">
-    <div class="card" id="panel-ok">
-      <h1><span class="spinner" aria-hidden="true"></span> Preparing your acknowledgement…</h1>
-      <p class="muted">We’re updating our system. If nothing happens, tap <strong>Continue</strong>.</p>
+    <!-- Initial panel -->
+    <div class="card" id="panel-start">
+      <h1 id="startTitle"><span class="spinner" aria-hidden="true"></span> Preparing your acknowledgement…</h1>
+      <p class="muted" id="startHelp">We’re updating our system. If nothing happens, tap <strong>Continue</strong>.</p>
 
       <div class="btns">
         <button class="btn" id="continueBtn" type="button">Continue</button>
         <button class="btn secondary" id="cancelBtn" type="button">Cancel</button>
+        <a class="btn hide" id="legacyBtn" href="#" role="button">Use legacy flow</a>
       </div>
 
       <p class="note">Do not share this link. It may expire.</p>
 
-      <noscript>
-        <p><strong>JavaScript is disabled.</strong> Tap <em>Continue</em> to proceed.</p>
-      </noscript>
-
-      <!-- Hidden form to Apps Script (POST) -->
-      <form id="handoffForm" method="POST" action="">
+      <!-- Hidden legacy fallback POST to Apps Script (kept for testing) -->
+      <form id="legacyForm" method="POST" action="">
         <input type="hidden" name="action" value="EMERGENCY_ACK_LINK" />
-        <input type="hidden" name="alert_id" id="fieldAlertId" value="" />
-        <input type="hidden" name="r" id="fieldRid" value="" />
+        <input type="hidden" name="alert_id" id="legacyAlert" value="" />
+        <input type="hidden" name="r" id="legacyRid" value="" />
       </form>
     </div>
 
+    <!-- Result panel (single ack) -->
+    <div class="card hide" id="panel-result">
+      <h1 id="resultTitle">Acknowledgement</h1>
+      <div id="resultBody"></div>
+
+      <div id="othersBlock" class="hide">
+        <h2>Other outstanding alerts</h2>
+        <p class="muted">Would you like to accept them all as well?</p>
+        <div class="tablewrap">
+          <table id="othersTable" aria-label="Other outstanding alerts">
+            <thead>
+              <tr>
+                <th>Alert ID</th><th>Candidate</th><th>Role</th><th>Hospital/Ward</th><th>Date/Time</th><th>Shift</th><th>Issue</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <div class="btns">
+          <button class="btn" id="acceptAllBtn" type="button">
+            <span class="spinner hide" id="acceptAllSpin"></span>
+            Accept all outstanding alerts
+          </button>
+          <button class="btn secondary" id="closeBtn" type="button">Close</button>
+        </div>
+        <p class="note" id="acceptAllNote"></p>
+      </div>
+
+      <div class="btns" id="singleClose">
+        <button class="btn" id="singleCloseBtn" type="button">Close</button>
+      </div>
+    </div>
+
+    <!-- Error panel -->
     <div class="card hide" id="panel-error">
-      <h1>We can’t process this link</h1>
+      <h1 class="err">We can’t process this link</h1>
       <p class="muted" id="errText">The link is missing required data.</p>
+      <div class="btns">
+        <a class="btn" id="retryBtn" href="#">Try again</a>
+        <a class="btn secondary" href="about:blank" onclick="window.close();return false;">Close</a>
+      </div>
       <p class="note">Please return to your WhatsApp message and tap the button again.</p>
     </div>
   </div>
 
+  <!-- Hidden embed bridge -->
+  <iframe id="bridge" title="Embed Bridge" aria-hidden="true"></iframe>
+
   <script>
-    (function(){
-      // ==== CONFIG: replace with your Apps Script doPost URL (production) ====
-      var GAS_URL = "https://script.google.com/macros/s/AKfycbw9X71BbvC55s2iJhyfGU5PoBtOxC9jvFsdKpd8BvrNghMfw8Yy9X-iSZ1Xcw9oTAPMcA/exec";
+  (function(){
+    // ========= CONFIG =========
+    // Replace with your Apps Script web app URL (deployed as "Anyone, even anonymous")
+    var GAS_URL = "https://script.google.com/macros/s/AKfycbw9X71BbvC55s2iJhyfGU5PoBtOxC9jvFsdKpd8BvrNghMfw8Yy9X-iSZ1Xcw9oTAPMcA/exec";
 
-      // ==== helpers ====
-      function qs(name){
-        var m = new RegExp("[?&]"+name+"=([^&#]*)").exec(window.location.search);
-        return m ? decodeURIComponent(m[1].replace(/\+/g,"%20")) : "";
+    // ========= helpers =========
+    function qs(name){
+      var m = new RegExp("[?&]"+name+"=([^&#]*)").exec(window.location.search);
+      return m ? decodeURIComponent(m[1].replace(/\+/g,"%20")) : "";
+    }
+    function rid(){
+      var d = new Date();
+      function p2(n){return n<10?"0"+n:n}
+      var ts = d.getFullYear().toString()+p2(d.getMonth()+1)+p2(d.getDate())+p2(d.getHours())+p2(d.getMinutes())+p2(d.getSeconds());
+      var rnd = Math.floor(Math.random()*10000).toString().padStart(4,"0");
+      return ts+"-"+rnd;
+    }
+    function show(id){document.getElementById(id).classList.remove("hide");}
+    function hide(id){document.getElementById(id).classList.add("hide");}
+    function esc(s){return String(s==null?"":s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]);}
+    function setHTML(el, html){el.innerHTML = html;}
+
+    // Bridge utils
+    var bridge = document.getElementById("bridge");
+    function go(url){ bridge.src = url; }
+    function makeUrl(params){
+      var q = Object.keys(params).map(k => k + "=" + encodeURIComponent(params[k])).join("&");
+      return GAS_URL + "?" + q;
+    }
+
+    // Accept embed messages from the iframe
+    var ALLOW_ORIGINS = [
+      "https://script.google.com",
+      "https://script.googleusercontent.com"
+    ];
+    function originAllowed(origin){
+      return ALLOW_ORIGINS.some(p => origin === p || origin.startsWith(p + "/"));
+    }
+
+    // ========= UI refs =========
+    var continueBtn = document.getElementById("continueBtn");
+    var cancelBtn   = document.getElementById("cancelBtn");
+    var legacyBtn   = document.getElementById("legacyBtn");
+    var legacyForm  = document.getElementById("legacyForm");
+    var legacyAlert = document.getElementById("legacyAlert");
+    var legacyRid   = document.getElementById("legacyRid");
+
+    var panelStart  = "panel-start";
+    var panelError  = "panel-error";
+    var panelResult = "panel-result";
+
+    var resultTitle = document.getElementById("resultTitle");
+    var resultBody  = document.getElementById("resultBody");
+
+    var othersBlock    = document.getElementById("othersBlock");
+    var othersTableTbd = document.querySelector("#othersTable tbody");
+    var acceptAllBtn   = document.getElementById("acceptAllBtn");
+    var acceptAllSpin  = document.getElementById("acceptAllSpin");
+    var acceptAllNote  = document.getElementById("acceptAllNote");
+    var singleClose    = document.getElementById("singleClose");
+    var singleCloseBtn = document.getElementById("singleCloseBtn");
+    var closeBtn       = document.getElementById("closeBtn");
+    var retryBtn       = document.getElementById("retryBtn");
+
+    // ========= state =========
+    var compositeP = qs("p");     // alertId or alertId~msisdn (from WhatsApp CTA)
+    var idsCsvP    = qs("ids");   // optional: direct bulk deep-link support
+    var msisdnP    = qs("msisdn");
+    var tokenP     = qs("t");
+    var legacyFlag = qs("legacy"); // force legacy if ?legacy=1
+    var debugMode  = qs("debug");
+
+    // Will be filled by ACK_RESULT (for rendering + Accept All)
+    var bulkInfo = null;
+
+    // ========= legacy fallback helpers =========
+    function runLegacy(composite){
+      legacyAlert.value = composite || "";
+      legacyRid.value = rid();
+      legacyForm.action = GAS_URL;
+      legacyForm.submit();
+    }
+
+    // ========= rendering helpers =========
+    function renderSingleResult(kind, alertSummary){
+      var when = esc(alertSummary && alertSummary.ack_when_iso || "");
+      var base = "";
+
+      if (kind === "done") {
+        resultTitle.textContent = "Acknowledgement confirmed";
+        base = "<p>We’ve recorded your acknowledgement and stopped further escalations.</p>";
+        if (when) base += '<p class="muted">When: ' + esc(when) + "</p>";
+      } else if (kind === "already") {
+        resultTitle.textContent = "Already acknowledged";
+        var who  = esc(alertSummary && (alertSummary.ack_name || "")) || "another team member";
+        base = "<p>This alert was already acknowledged by <strong>" + who + "</strong>";
+        if (when) base += " at <strong>" + esc(when) + "</strong>";
+        base += ".</p>";
+      } else {
+        resultTitle.textContent = "Acknowledgement";
+        base = "<p class='muted'>Status unknown.</p>";
       }
-      function rid(){
-        var d = new Date();
-        function p2(n){return n<10?"0"+n:n}
-        var ts = d.getFullYear().toString()+p2(d.getMonth()+1)+p2(d.getDate())+p2(d.getHours())+p2(d.getMinutes())+p2(d.getSeconds());
-        var rnd = Math.floor(Math.random()*10000).toString().padStart(4,"0");
-        return ts+"-"+rnd;
-      }
-      function show(id){document.getElementById(id).classList.remove("hide");}
-      function hide(id){document.getElementById(id).classList.add("hide");}
 
-      // ==== main ====
-      var composite = qs("p");
-      var debugMode = qs("debug");
-      var form = document.getElementById("handoffForm");
-      var btn = document.getElementById("continueBtn");
-      var cancel = document.getElementById("cancelBtn");
-      var fieldAlert = document.getElementById("fieldAlertId");
-      var fieldRid = document.getElementById("fieldRid");
+      setHTML(resultBody, base);
+    }
 
-      if (!composite) {
-        hide("panel-ok");
-        show("panel-error");
-        document.getElementById("errText").textContent = "Missing parameter. Please tap the WhatsApp button again.";
+    function fillOthersTable(others){
+      othersTableTbd.innerHTML = "";
+      (others || []).forEach(function(x){
+        var tr = document.createElement("tr");
+        tr.innerHTML = [
+          "<td>", esc(x.alert_id||""), "</td>",
+          "<td>", esc(x.candidate_name||""), "</td>",
+          "<td>", esc(x.role||""), "</td>",
+          "<td>", esc(x.hospital||""), " / ", esc(x.ward||""), "</td>",
+          "<td>", esc(x.date_label||""), " · ", esc(x.time_range_label||""), "</td>",
+          "<td>", esc(x.shift_type||""), "</td>",
+          "<td>", esc(x.issue_type||""), "</td>"
+        ].join("");
+        othersTableTbd.appendChild(tr);
+      });
+    }
+
+    function toggleAcceptAllLoading(b){
+      acceptAllBtn.disabled = !!b;
+      acceptAllSpin.classList.toggle("hide", !b);
+    }
+
+    // ========= flows =========
+
+    // 0) Bulk deep-link support (ids/msisdn/t in query) — optional but handy:
+    function maybeRunDirectBulk(){
+      if (!idsCsvP || !tokenP) return false;
+      // Open ACK_ALL_EMBED straight away
+      var u = makeUrl({
+        action: "EMERGENCY_ACK_ALL_EMBED",
+        ids: idsCsvP,
+        msisdn: msisdnP || "",
+        t: tokenP
+      });
+      go(u);
+      return true;
+    }
+
+    // 1) Start embed handshake for single alert
+    function startEmbedHandshake(){
+      var u = makeUrl({
+        action: "EMERGENCY_ACK_LINK_EMBED",
+        p: compositeP
+      });
+      go(u);
+    }
+
+    // 2) Commit single ACK using token from ACK_LINK
+    function commitSingleAck(alert_id, msisdn, t){
+      var u = makeUrl({
+        action: "EMERGENCY_ACK_COMMIT_EMBED",
+        alert_id: alert_id,
+        msisdn: msisdn || "",
+        t: t
+      });
+      go(u);
+    }
+
+    // 3) Run bulk accept using bulk tokens from ACK_RESULT
+    function runAcceptAll(bulk){
+      if (!bulk || !bulk.idsCsv || !bulk.t) return;
+      toggleAcceptAllLoading(true);
+      acceptAllNote.textContent = "";
+      var u = makeUrl({
+        action: "EMERGENCY_ACK_ALL_EMBED",
+        ids: bulk.idsCsv,
+        msisdn: bulk.msisdn || "",
+        t: bulk.t
+      });
+      go(u);
+    }
+
+    // ========= message router =========
+    window.addEventListener("message", function(ev){
+      // Guard: only accept from our Apps Script iframe
+      if (ev.source !== bridge.contentWindow) return;
+      if (!originAllowed(ev.origin)) return;
+
+      var data = ev.data || {};
+      if (!data || !data.type) return;
+
+      if (debugMode) console.log("[embed]", data.type, data.payload);
+
+      // 1) Token from entry
+      if (data.type === "ACK_LINK") {
+        if (!(data.payload && data.payload.ok)) {
+          hide(panelStart); show(panelError);
+          document.getElementById("errText").textContent = "Could not prepare this acknowledgement (token step).";
+          return;
+        }
+        commitSingleAck(data.payload.alert_id, data.payload.msisdn || "", data.payload.t);
         return;
       }
 
-      fieldAlert.value = composite;
-      fieldRid.value = rid();
-      form.action = GAS_URL;
+      // 2) Commit result (single ack + others + pre-signed bulk)
+      if (data.type === "ACK_RESULT") {
+        hide(panelStart);
+        var ok = data.payload && data.payload.ok;
+        if (!ok) {
+          show(panelError);
+          document.getElementById("errText").textContent = "The acknowledgement link is invalid or expired.";
+          return;
+        }
 
-      btn.addEventListener("click", function(){
-        btn.disabled = true;
-        try { form.submit(); } catch(_){}
-        setTimeout(function(){ if (!btn.dataset.sent) btn.disabled = false; }, 4000);
-      });
+        var kind   = String(data.payload.kind || "");
+        var alert  = data.payload.alert || null;
+        var others = data.payload.others || [];
+        bulkInfo   = data.payload.bulk || null;
 
-      cancel.addEventListener("click", function(){
-        try { window.close(); } catch(_){}
-      });
+        renderSingleResult(kind, alert);
+        show(panelResult);
 
-      if (!debugMode) {
-        setTimeout(function(){ try { btn.disabled = true; form.submit(); btn.dataset.sent = "1"; } catch(_){} }, 200);
+        if (others && others.length && bulkInfo && bulkInfo.idsCsv && bulkInfo.t) {
+          fillOthersTable(others);
+          show("othersBlock");
+          hide("singleClose");
+        } else {
+          // No others – simple close
+          hide("othersBlock");
+          show("singleClose");
+        }
+        return;
       }
-    })();
+
+      // 3) Bulk result
+      if (data.type === "ACK_ALL_RESULT") {
+        toggleAcceptAllLoading(false);
+        var ok = data.payload && data.payload.ok;
+        if (!ok) {
+          acceptAllNote.textContent = "Bulk acknowledgement failed. Please try again.";
+          return;
+        }
+        var n = Number(data.payload.ackedCount || 0);
+        acceptAllNote.textContent = "Accepted " + n + " alert" + (n===1?"":"s") + ".";
+        acceptAllBtn.disabled = true;
+        return;
+      }
+    });
+
+    // ========= wire up =========
+    continueBtn.addEventListener("click", function(){
+      continueBtn.disabled = true;
+      if (legacyFlag === "1") { runLegacy(compositeP || (idsCsvP?("BULK:"+idsCsvP):"")); return; }
+      if (!compositeP && !idsCsvP) {
+        hide(panelStart); show(panelError);
+        document.getElementById("errText").textContent = "Missing parameter. Please tap the WhatsApp button again.";
+        return;
+      }
+      // prefer direct bulk when ids/t present
+      if (idsCsvP && tokenP) { maybeRunDirectBulk(); return; }
+      startEmbedHandshake();
+    });
+
+    cancelBtn.addEventListener("click", function(){ try { window.close(); } catch(_){} });
+    legacyBtn.addEventListener("click", function(e){ e.preventDefault(); runLegacy(compositeP); });
+
+    singleCloseBtn.addEventListener("click", function(){ try { window.close(); } catch(_){} });
+    closeBtn.addEventListener("click", function(){ try { window.close(); } catch(_){} });
+
+    acceptAllBtn.addEventListener("click", function(){
+      if (!bulkInfo) return;
+      runAcceptAll(bulkInfo);
+    });
+
+    retryBtn.addEventListener("click", function(e){
+      e.preventDefault();
+      window.location.reload();
+    });
+
+    // ========= boot =========
+    // Populate legacy form fields now (in case user taps "legacy")
+    legacyAlert.value = compositeP || "";
+    legacyRid.value = rid();
+    legacyBtn.href = "#";
+
+    // Auto-continue unless debug
+    if (!debugMode) {
+      setTimeout(function(){ continueBtn.click(); }, 150);
+    } else {
+      // show legacy button in debug mode
+      legacyBtn.classList.remove("hide");
+    }
+  })();
   </script>
 </body>
 </html>
