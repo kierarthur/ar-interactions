@@ -88,7 +88,7 @@
     // JSONP loader
     function jsonp(url, cbName, onDone, onErr){
       var done=false, s=document.createElement('script');
-      var timer=setTimeout(function(){ if(done) return; done=true; onErr&&onErr(new Error('Timeout')); cleanup(); }, 12000);
+      var timer=setTimeout(function(){ if(done) return; done=true; onErr&&onErr(new Error('Timeout')); cleanup(); }, 90000);
       function cleanup(){ try{ s.remove(); }catch(_){} window[cbName]=function(){}; clearTimeout(timer); }
       window[cbName] = function(data){ if(done) return; done=true; try{ onDone && onDone(data); } finally { cleanup(); } };
       s.src = url + (url.indexOf('?')>-1?'&':'?') + 'callback=' + encodeURIComponent(cbName) + '&_=' + Date.now();
