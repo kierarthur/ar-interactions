@@ -42,7 +42,7 @@
   <div class="stage">
     <div class="card" id="panel-progress">
       <h1><span class="spinner" aria-hidden="true"></span> Preparing your acknowledgement…</h1>
-      <p class="muted">We’re updating our system automatically. This should only take a moment.</p>
+      <p class="muted">We’re updating our system automatically. This will take around 30 seconds.</p>
       <div class="btns">
         <button class="btn secondary" id="cancelBtn" type="button">Cancel</button>
       </div>
@@ -135,7 +135,8 @@
           b.innerHTML = '';
 
           if (kind === 'done') {
-            b.innerHTML = '<p>We’ve recorded your acknowledgement and stopped further escalations.</p>';
+            // Updated copy to explicitly confirm the one they tapped
+            b.innerHTML = '<p>We’ve recorded your acknowledgement for this alert and stopped further escalations.</p>';
           } else if (kind === 'already') {
             b.innerHTML = '<p class="muted">This alert was already acknowledged.</p>';
           } else {
@@ -146,6 +147,13 @@
           if (others && others.length && bulk && bulk.idsCsv && bulk.t) {
             el('bulkBtns').style.display = '';
             el('soloCloseBtns').style.display = 'none';  // ensure solo close is hidden when bulk shown
+
+            // Prompt line per new requirement
+            var promptLine = document.createElement('p');
+            promptLine.textContent = 'Do you want to accept responsibility and acknowledge the following alerts as well?';
+            b.appendChild(promptLine);
+
+            // List of other alerts
             var list = document.createElement('ul');
             others.slice(0,6).forEach(function(o){
               var li = document.createElement('li');
@@ -160,18 +168,33 @@
             }
             b.appendChild(list);
 
+            // Inline status line for progress/success
+            var status = document.createElement('p');
+            status.className = 'muted';
+            status.id = 'bulkStatus';
+            status.style.display = 'none';
+            b.appendChild(status);
+
             el('closeBtn').onclick = function(){ try{ window.close(); }catch(_){} };
             el('acceptAllBtn').onclick = function(){
               el('acceptAllBtn').disabled = true;
+
+              // Show progress message while bulk updates run
+              status.style.display = '';
+              status.innerHTML = '<span class="spinner" aria-hidden="true"></span> We’re updating our systems to acknowledge the selected alerts. This will take around 30 seconds.';
+
               var cb3 = 'cb_ack_all_' + Math.random().toString(36).slice(2);
               var url3 = GAS_BASE + '?action=EMERGENCY_ACK_ALL_EMBED&ids=' + encodeURIComponent(bulk.idsCsv) +
                          '&msisdn=' + encodeURIComponent(bulk.msisdn||'') + '&t=' + encodeURIComponent(bulk.t);
               jsonp(url3, cb3, function(res3){
                 var p3 = (res3 && res3.payload) || {};
-                b.innerHTML = '<p>Accepted <strong>' + (p3.ackedCount||0) + '</strong> additional alert(s).</p>';
+                // Completion message per requirement
+                status.innerHTML = 'Accepted <strong>' + (p3.ackedCount||0) + '</strong> additional alert(s). Further escalations for these have been stopped.';
                 el('acceptAllBtn').style.display = 'none';
               }, function(){
                 el('acceptAllBtn').disabled = false;
+                status.style.display = '';
+                status.textContent = 'Sorry, bulk accept failed. Please try again.';
                 alert('Sorry, bulk accept failed. Please try again.');
               });
             };
