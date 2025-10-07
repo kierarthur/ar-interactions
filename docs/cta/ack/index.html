@@ -34,8 +34,7 @@
   <div class="container">
     <header class="brand" aria-label="Arthur Rai Medical Services">
       <a href="https://www.arthur-rai.co.uk/" aria-label="Arthur Rai Medical Services — Home">
-    <img src="./assets/arthurrai.png" alt="Arthur Rai Medical Services">
-
+        <img src="./assets/arthurrai.png" alt="Arthur Rai Medical Services">
       </a>
     </header>
   </div>
@@ -43,9 +42,8 @@
   <div class="stage">
     <div class="card" id="panel-progress">
       <h1><span class="spinner" aria-hidden="true"></span> Preparing your acknowledgement…</h1>
-      <p class="muted">We’re updating our system automatically. If nothing happens, tap <strong>Continue</strong>.</p>
+      <p class="muted">We’re updating our system automatically. This should only take a moment.</p>
       <div class="btns">
-        <button class="btn" id="continueBtn" type="button">Continue</button>
         <button class="btn secondary" id="cancelBtn" type="button">Cancel</button>
       </div>
       <p class="note">Do not share this link. It may expire.</p>
@@ -58,23 +56,20 @@
         <button class="btn" id="acceptAllBtn" type="button">Accept all outstanding</button>
         <button class="btn secondary" id="closeBtn" type="button">Close</button>
       </div>
+      <div class="btns" id="soloCloseBtns" style="display:none">
+        <button class="btn secondary" id="closeBtnSolo" type="button">Close</button>
+      </div>
     </div>
 
     <div class="card hide" id="panel-error">
       <h1>We can’t process this link</h1>
       <p class="muted" id="errText">The link is missing required data.</p>
       <div class="btns">
+        <button class="btn" id="retryBtn" type="button">Retry</button>
         <button class="btn secondary" id="errCloseBtn" type="button">Close</button>
       </div>
     </div>
   </div>
-
-  <!-- Hidden form POST fallback (keeps legacy path working if JSONP fails) -->
-  <form id="fallbackForm" method="POST" action="" class="hide">
-    <input type="hidden" name="action" value="EMERGENCY_ACK_LINK">
-    <input type="hidden" name="alert_id" id="fallbackAlert">
-    <input type="hidden" name="r" id="fallbackRid">
-  </form>
 
   <script>
   (function(){
@@ -85,10 +80,6 @@
     function qs(name){
       var m = new RegExp("[?&]"+name+"=([^&#]*)").exec(window.location.search);
       return m ? decodeURIComponent(m[1].replace(/\+/g,"%20")) : "";
-    }
-    function rid(){
-      var d=new Date();function p2(n){return n<10?"0"+n:n}
-      return d.getFullYear()+""+p2(d.getMonth()+1)+p2(d.getDate())+p2(d.getHours())+p2(d.getMinutes())+p2(d.getSeconds())+"-"+Math.floor(Math.random()*10000).toString().padStart(4,"0");
     }
     function show(id){document.getElementById(id).classList.remove("hide");}
     function hide(id){document.getElementById(id).classList.add("hide");}
@@ -106,97 +97,107 @@
     }
 
     // ====== flow ======
-    var composite = qs("p"); // "alertId" or "alertId~msisdn"
-    if (!composite) {
-      hide("panel-progress"); show("panel-error");
-      el("errText").textContent = "Missing parameter. Please tap the WhatsApp button again.";
-      return;
-    }
+    function run(){
+      hide("panel-error"); hide("panel-result"); show("panel-progress");
 
-    // Fallback form wiring (for users who tap Continue)
-    var form = el("fallbackForm");
-    el("fallbackAlert").value = composite;
-    el("fallbackRid").value = rid();
-    form.action = GAS_BASE;
+      // reset button groups to avoid stale state on retries
+      el('bulkBtns').style.display = 'none';
+      el('soloCloseBtns').style.display = 'none';
 
-    el("continueBtn").onclick = function(){ try{ form.submit(); }catch(_){} };
-    el("cancelBtn").onclick = function(){ try{ window.close(); }catch(_){} };
-    el("errCloseBtn").onclick = function(){ try{ window.close(); }catch(_){} };
+      var composite = qs("p"); // "alertId" or "alertId~msisdn"
+      if (!composite) {
+        hide("panel-progress"); show("panel-error");
+        el("errText").textContent = "Missing parameter. Please tap the WhatsApp button again.";
+        return;
+      }
 
-    // Step 1: get short-lived token
-    var cb1 = 'cb_ack_link_' + Math.random().toString(36).slice(2);
-    jsonp(GAS_BASE + '?action=EMERGENCY_ACK_LINK_EMBED&p=' + encodeURIComponent(composite), cb1, function(res1){
-      if (!res1 || !res1.payload || !res1.payload.ok) { throw new Error('Token error'); }
-      var t = res1.payload.t, alertId = res1.payload.alert_id, msisdn = res1.payload.msisdn || '';
+      // Step 1: get short-lived token
+      var cb1 = 'cb_ack_link_' + Math.random().toString(36).slice(2);
+      jsonp(GAS_BASE + '?action=EMERGENCY_ACK_LINK_EMBED&p=' + encodeURIComponent(composite), cb1, function(res1){
+        if (!res1 || !res1.payload || !res1.payload.ok) { throw new Error('Token error'); }
+        var t = res1.payload.t, alertId = res1.payload.alert_id, msisdn = res1.payload.msisdn || '';
 
-      // Step 2: commit single
-      var cb2 = 'cb_ack_commit_' + Math.random().toString(36).slice(2);
-      var url2 = GAS_BASE + '?action=EMERGENCY_ACK_COMMIT_EMBED&alert_id=' + encodeURIComponent(alertId) + '&t=' + encodeURIComponent(t) + (msisdn?('&msisdn='+encodeURIComponent(msisdn)):'');
-      jsonp(url2, cb2, function(res2){
-        hide('panel-progress'); show('panel-result');
+        // Step 2: commit single
+        var cb2 = 'cb_ack_commit_' + Math.random().toString(36).slice(2);
+        var url2 = GAS_BASE + '?action=EMERGENCY_ACK_COMMIT_EMBED&alert_id=' + encodeURIComponent(alertId) +
+                   '&t=' + encodeURIComponent(t) + (msisdn?('&msisdn='+encodeURIComponent(msisdn)):'');
+        jsonp(url2, cb2, function(res2){
+          hide('panel-progress'); show('panel-result');
 
-        var payload = (res2 && res2.payload) || {};
-        var kind = payload.kind || (payload.ok ? 'done' : 'error');
-        var others = payload.others || [];
-        var bulk = payload.bulk || null;
+          var payload = (res2 && res2.payload) || {};
+          var kind = payload.kind || (payload.ok ? 'done' : 'error');
+          var others = payload.others || [];
+          var bulk = payload.bulk || null;
 
-        el('resultTitle').textContent = (kind === 'already') ? 'Already acknowledged.' : (kind === 'done' ? 'Acknowledgement confirmed.' : 'Something went wrong.');
-        var b = el('resultBody');
-        b.innerHTML = '';
+          el('resultTitle').textContent = (kind === 'already') ? 'Already acknowledged.' :
+                                          (kind === 'done'    ? 'Acknowledgement confirmed.' : 'Something went wrong.');
+          var b = el('resultBody');
+          b.innerHTML = '';
 
-        if (kind === 'done') {
-          b.innerHTML = '<p>We’ve recorded your acknowledgement and stopped further escalations.</p>';
-        } else if (kind === 'already') {
-          b.innerHTML = '<p class="muted">This alert was already acknowledged.</p>';
-        } else {
-          b.innerHTML = '<p class="muted">Please try again.</p>';
-        }
-
-        // Offer Accept All
-        if (others && others.length && bulk && bulk.idsCsv && bulk.t) {
-          el('bulkBtns').style.display = '';
-          var list = document.createElement('ul');
-          others.slice(0,6).forEach(function(o){
-            var li = document.createElement('li');
-            li.textContent = [o.candidate_name || 'Colleague', o.role || '', o.hospital || '', o.ward || '', o.date_label || '', o.time_range_label || '', o.shift_type || '', o.issue_type || ''].filter(Boolean).join(' · ');
-            list.appendChild(li);
-          });
-          if (others.length > 6) {
-            var more = document.createElement('p');
-            more.className = 'muted';
-            more.textContent = '+' + (others.length - 6) + ' more';
-            b.appendChild(more);
+          if (kind === 'done') {
+            b.innerHTML = '<p>We’ve recorded your acknowledgement and stopped further escalations.</p>';
+          } else if (kind === 'already') {
+            b.innerHTML = '<p class="muted">This alert was already acknowledged.</p>';
+          } else {
+            b.innerHTML = '<p class="muted">Please try again.</p>';
           }
-          b.appendChild(list);
 
-          el('closeBtn').onclick = function(){ try{ window.close(); }catch(_){} };
-          el('acceptAllBtn').onclick = function(){
-            el('acceptAllBtn').disabled = true;
-            var cb3 = 'cb_ack_all_' + Math.random().toString(36).slice(2);
-            var url3 = GAS_BASE + '?action=EMERGENCY_ACK_ALL_EMBED&ids=' + encodeURIComponent(bulk.idsCsv) + '&msisdn=' + encodeURIComponent(bulk.msisdn||'') + '&t=' + encodeURIComponent(bulk.t);
-            jsonp(url3, cb3, function(res3){
-              var p3 = (res3 && res3.payload) || {};
-              b.innerHTML = '<p>Accepted <strong>' + (p3.ackedCount||0) + '</strong> additional alert(s).</p>';
-              el('acceptAllBtn').style.display = 'none';
-            }, function(){
-              el('acceptAllBtn').disabled = false;
-              alert('Sorry, bulk accept failed. Please try again.');
+          // Offer Accept All
+          if (others && others.length && bulk && bulk.idsCsv && bulk.t) {
+            el('bulkBtns').style.display = '';
+            el('soloCloseBtns').style.display = 'none';  // ensure solo close is hidden when bulk shown
+            var list = document.createElement('ul');
+            others.slice(0,6).forEach(function(o){
+              var li = document.createElement('li');
+              li.textContent = [o.candidate_name || 'Colleague', o.role || '', o.hospital || '', o.ward || '', o.date_label || '', o.time_range_label || '', o.shift_type || '', o.issue_type || ''].filter(Boolean).join(' · ');
+              list.appendChild(li);
             });
-          };
-        } else {
-          el('bulkBtns').style.display = 'none';
-        }
+            if (others.length > 6) {
+              var more = document.createElement('p');
+              more.className = 'muted';
+              more.textContent = '+' + (others.length - 6) + ' more';
+              b.appendChild(more);
+            }
+            b.appendChild(list);
+
+            el('closeBtn').onclick = function(){ try{ window.close(); }catch(_){} };
+            el('acceptAllBtn').onclick = function(){
+              el('acceptAllBtn').disabled = true;
+              var cb3 = 'cb_ack_all_' + Math.random().toString(36).slice(2);
+              var url3 = GAS_BASE + '?action=EMERGENCY_ACK_ALL_EMBED&ids=' + encodeURIComponent(bulk.idsCsv) +
+                         '&msisdn=' + encodeURIComponent(bulk.msisdn||'') + '&t=' + encodeURIComponent(bulk.t);
+              jsonp(url3, cb3, function(res3){
+                var p3 = (res3 && res3.payload) || {};
+                b.innerHTML = '<p>Accepted <strong>' + (p3.ackedCount||0) + '</strong> additional alert(s).</p>';
+                el('acceptAllBtn').style.display = 'none';
+              }, function(){
+                el('acceptAllBtn').disabled = false;
+                alert('Sorry, bulk accept failed. Please try again.');
+              });
+            };
+          } else {
+            el('bulkBtns').style.display = 'none';
+            el('soloCloseBtns').style.display = '';
+            var sc = el('closeBtnSolo');
+            if (sc) sc.onclick = function(){ try{ window.close(); }catch(_){} };
+          }
+        }, function(){
+          hide('panel-progress'); show('panel-error');
+          el('errText').textContent = 'We could not commit your acknowledgement. Please try again.';
+        });
       }, function(){
         hide('panel-progress'); show('panel-error');
-        el('errText').textContent = 'We could not commit your acknowledgement. Tap Continue to use the fallback.';
+        el('errText').textContent = 'We could not prepare your acknowledgement. Please try again.';
       });
-    }, function(){
-      // If token fetch fails, fall back to the legacy POST handoff
-      try { el('continueBtn').click(); } catch(_){}
-    });
+    }
 
-    // Auto-continue after 250ms (to cover users with strict script blockers)
-    setTimeout(function(){ try{ el('continueBtn').click(); }catch(_){ } }, 250);
+    // wire buttons (no legacy flow)
+    el("cancelBtn").onclick = function(){ try{ window.close(); }catch(_){} };
+    el("errCloseBtn").onclick = function(){ try{ window.close(); }catch(_){} };
+    var rb = el("retryBtn"); if (rb) rb.onclick = run;
+
+    // kick off
+    run();
   })();
   </script>
 </body>
